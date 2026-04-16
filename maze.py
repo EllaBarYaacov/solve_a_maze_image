@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+from collections import deque
 import os
 import random
 import re
@@ -182,6 +183,87 @@ class Maze:
         self.array[start[0], start[1]] = "S"
         self.array[end[0], end[1]] = "E"
         self.path: list[tuple[int, int]] = []
+
+    def find_final_and_exploratory_paths(self) -> tuple[list[tuple[int, int]], list[tuple[int, int]]]:
+        """
+        Breadth-first search from S to E.
+
+        Returns ``(final_path, exploratory_path)``. ``final_path`` is the shortest
+        route from start to end. ``exploratory_path`` is the order cells are
+        *dequeued* during BFS (each reachable cell at most once).
+        """
+        h, w = self.height, self.width
+        arr = self.array
+
+        start = end = None
+        for r in range(h):
+            for c in range(w):
+                v = arr[r, c]
+                if v == "S":
+                    start = (r, c)
+                elif v == "E":
+                    end = (r, c)
+        if start is None or end is None:
+            return [], []
+
+        def walkable(r: int, c: int) -> bool:
+            return arr[r, c] != 1
+
+        queue: deque[tuple[int, int]] = deque([start])
+        parent: dict[tuple[int, int], tuple[int, int] | None] = {start: None}
+        exploratory_path: list[tuple[int, int]] = []
+
+        while queue:
+            cell = queue.popleft()
+            exploratory_path.append(cell)
+            if cell == end:
+                break
+            r, c = cell
+            for nr, nc in _neighbors4(r, c, h, w):
+                if (nr, nc) in parent:
+                    continue
+                if not walkable(nr, nc):
+                    continue
+                parent[nr, nc] = cell
+                queue.append((nr, nc))
+
+        if end not in parent:
+            return [], exploratory_path
+
+        final_path: list[tuple[int, int]] = []
+        cur: tuple[int, int] | None = end
+        while cur is not None:
+            final_path.append(cur)
+            cur = parent[cur]
+        final_path.reverse()
+        return final_path, exploratory_path
+
+    def draw_solution_path(self, exploratory_path: bool = False) -> None:
+        """
+        Run BFS and mark path cells as ``P`` in :attr:`array`.
+
+        By default only the shortest solution is marked. With
+        ``exploratory_path=True``, every cell in BFS dequeue order is marked;
+        start and end stay as ``S`` / ``E``. Clears previous ``P`` markers first.
+        Updates :attr:`path` to the coordinates that were drawn.
+        """
+        final_path, bfs_order = self.find_final_and_exploratory_paths()
+        coords = bfs_order if exploratory_path else final_path
+
+        arr = self.array
+        for r in range(self.height):
+            for c in range(self.width):
+                if arr[r, c] == "P":
+                    arr[r, c] = 0
+
+        for r, c in coords:
+            v = arr[r, c]
+            if v == "S" or v == "E":
+                continue
+            if v != 1:
+                arr[r, c] = "P"
+
+        self.path = list(coords)
 
     def maze_to_image(
         self,
