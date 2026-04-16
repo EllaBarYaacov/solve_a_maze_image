@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import hashlib
-from collections import deque
 import os
 import random
 import re
@@ -74,6 +73,15 @@ def _grid_edges(n: int, total: int) -> list[int]:
         if edges[i] < edges[i - 1]:
             edges[i] = edges[i - 1]
     return edges
+
+
+def _cell_center_xy(
+    r: int, c: int, x_edges: list[int], y_edges: list[int]
+) -> tuple[float, float]:
+    """Pixel center of the cell rectangle used by :meth:`Maze.maze_to_image`."""
+    x0, x1 = x_edges[c], x_edges[c + 1] - 1
+    y0, y1 = y_edges[r], y_edges[r + 1] - 1
+    return ((x0 + x1) / 2.0, (y0 + y1) / 2.0)
 
 
 def _path_stamp(path: list[tuple[int, int]]) -> str:
@@ -186,11 +194,12 @@ class Maze:
 
     def find_final_and_exploratory_paths(self) -> tuple[list[tuple[int, int]], list[tuple[int, int]]]:
         """
-        Breadth-first search from S to E.
+        Depth-first search from S to E.
 
-        Returns ``(final_path, exploratory_path)``. ``final_path`` is the shortest
-        route from start to end. ``exploratory_path`` is the order cells are
-        *dequeued* during BFS (each reachable cell at most once).
+        Returns ``(final_path, exploratory_path)``. ``final_path`` is *a* route
+        from start to end (neighbor order from :func:`_neighbors4`, stack LIFO).
+        ``exploratory_path`` is the order cells are *popped* from the DFS stack
+        (each reachable cell at most once).
         """
         h, w = self.height, self.width
         arr = self.array
@@ -209,23 +218,29 @@ class Maze:
         def walkable(r: int, c: int) -> bool:
             return arr[r, c] != 1
 
-        queue: deque[tuple[int, int]] = deque([start])
+        stack: list[tuple[int, int]] = [start]
         parent: dict[tuple[int, int], tuple[int, int] | None] = {start: None}
+        visited: set[tuple[int, int]] = set()
         exploratory_path: list[tuple[int, int]] = []
 
-        while queue:
-            cell = queue.popleft()
+        while stack:
+            cell = stack.pop()
+            if cell in visited:
+                continue
+            visited.add(cell)
             exploratory_path.append(cell)
             if cell == end:
                 break
             r, c = cell
-            for nr, nc in _neighbors4(r, c, h, w):
-                if (nr, nc) in parent:
+            for nr, nc in reversed(_neighbors4(r, c, h, w)):
+                if (nr, nc) in visited:
                     continue
                 if not walkable(nr, nc):
                     continue
+                if (nr, nc) in parent:
+                    continue
                 parent[nr, nc] = cell
-                queue.append((nr, nc))
+                stack.append((nr, nc))
 
         if end not in parent:
             return [], exploratory_path
@@ -240,15 +255,15 @@ class Maze:
 
     def draw_solution_path(self, exploratory_path: bool = False) -> None:
         """
-        Run BFS and mark path cells as ``P`` in :attr:`array`.
+        Run DFS and mark path cells as ``P`` in :attr:`array`.
 
-        By default only the shortest solution is marked. With
-        ``exploratory_path=True``, every cell in BFS dequeue order is marked;
+        By default only the found solution path is marked. With
+        ``exploratory_path=True``, every cell in DFS stack pop order is marked;
         start and end stay as ``S`` / ``E``. Clears previous ``P`` markers first.
         Updates :attr:`path` to the coordinates that were drawn.
         """
-        final_path, bfs_order = self.find_final_and_exploratory_paths()
-        coords = bfs_order if exploratory_path else final_path
+        final_path, dfs_order = self.find_final_and_exploratory_paths()
+        coords = dfs_order if exploratory_path else final_path
 
         arr = self.array
         for r in range(self.height):
@@ -274,11 +289,17 @@ class Maze:
         start: tuple[int, int, int] | None = None,
         end: tuple[int, int, int] | None = None,
         path: tuple[int, int, int] | None = None,
+        path_line_width_fraction: float = 0.25,
     ) -> str:
         """
         Rasterize ``self.array`` to a PNG. Output height is ``self.image_height``
         pixels; each row uses ``image_height / height`` pixels on average. Width
         scales so cells stay square (same aspect as the maze grid).
+
+        Path cells (``P``) are filled with the free color; the solution polyline from
+        :attr:`path` is drawn in the path color with a dot at each cell center and
+        segments joining consecutive centers. Stroke width is
+        ``path_line_width_fraction`` times the pixel width of a column (default 1/4).
 
         Round-trip with ``image_to_maze`` is reliable when using the default palette
         (or when the same RGB tuples are used for decoding — defaults only for v1).
@@ -290,8 +311,8 @@ class Maze:
         path_c = path if path is not None else self.default_path
 
         os.makedirs(output_folder, exist_ok=True)
-        stamp = _path_stamp(self.path)
-        fname = f"maze_{self.width}_{self.height}_{self.seed}_{stamp}.png"
+        path_stamp = _path_stamp(self.path)
+        fname = f"maze_{self.width}_{self.height}_{self.seed}_{path_stamp}.png"
         out_path = os.path.join(output_folder, fname)
 
         img_h = self.image_height
@@ -314,12 +335,28 @@ class Maze:
                 elif v == "E":
                     color = end_c
                 elif v == "P":
-                    color = path_c
+                    color = free
                 else:
                     color = free
                 x0, y0 = x_edges[c], y_edges[r]
                 x1, y1 = x_edges[c + 1] - 1, y_edges[r + 1] - 1
                 draw.rectangle([x0, y0, x1, y1], fill=color, outline=color)
+
+        if self.path:
+            col_w = x_edges[1] - x_edges[0] if self.width > 0 else 1
+            line_w = max(1, int(round(path_line_width_fraction * col_w)))
+            dot_r = max(1.0, line_w / 2.0)
+            centers = [
+                _cell_center_xy(r, c, x_edges, y_edges) for r, c in self.path
+            ]
+            for i in range(1, len(centers)):
+                draw.line([centers[i - 1], centers[i]], fill=path_c, width=line_w)
+            for cx, cy in centers:
+                x0 = int(cx - dot_r)
+                y0 = int(cy - dot_r)
+                x1 = int(cx + dot_r)
+                y1 = int(cy + dot_r)
+                draw.ellipse([x0, y0, x1, y1], fill=path_c, outline=path_c)
 
         im.save(out_path, format="PNG")
         return out_path
