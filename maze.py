@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-import hashlib
+from collections import deque
 import os
 import random
 import re
@@ -82,11 +82,6 @@ def _cell_center_xy(
     x0, x1 = x_edges[c], x_edges[c + 1] - 1
     y0, y1 = y_edges[r], y_edges[r + 1] - 1
     return ((x0 + x1) / 2.0, (y0 + y1) / 2.0)
-
-
-def _path_stamp(path: list[tuple[int, int]]) -> str:
-    payload = repr(tuple((int(r), int(c)) for r, c in path)).encode("utf-8")
-    return hashlib.sha256(payload).hexdigest()[:16]
 
 
 def _nearest_label(rgb: tuple[int, int, int], palette: dict[str, tuple[int, int, int]]) -> str:
@@ -191,15 +186,21 @@ class Maze:
         self.array[start[0], start[1]] = "S"
         self.array[end[0], end[1]] = "E"
         self.path: list[tuple[int, int]] = []
+        self.path_image_tag: str = "none"
 
-    def find_final_and_exploratory_paths(self) -> tuple[list[tuple[int, int]], list[tuple[int, int]]]:
+    def find_final_and_exploratory_paths(
+        self, use_bfs: bool = False
+    ) -> tuple[list[tuple[int, int]], list[tuple[int, int]]]:
         """
-        Depth-first search from S to E.
+        Search from S to E with breadth-first (``use_bfs=True``) or depth-first
+        (default).
 
-        Returns ``(final_path, exploratory_path)``. ``final_path`` is *a* route
-        from start to end (neighbor order from :func:`_neighbors4`, stack LIFO).
-        ``exploratory_path`` is the order cells are *popped* from the DFS stack
-        (each reachable cell at most once).
+        Returns ``(final_path, exploratory_path)``. With BFS, ``final_path`` is a
+        shortest route; ``exploratory_path`` is dequeue order. With DFS,
+        ``final_path`` is *a* route (neighbor order from :func:`_neighbors4`,
+        reversed for stack order). ``exploratory_path`` is a **continuous** walk:
+        each step is to an orthogonal neighbor, including backtracking along the
+        DFS tree after a failed subtree.
         """
         h, w = self.height, self.width
         arr = self.array
@@ -218,29 +219,65 @@ class Maze:
         def walkable(r: int, c: int) -> bool:
             return arr[r, c] != 1
 
-        stack: list[tuple[int, int]] = [start]
         parent: dict[tuple[int, int], tuple[int, int] | None] = {start: None}
-        visited: set[tuple[int, int]] = set()
         exploratory_path: list[tuple[int, int]] = []
 
-        while stack:
-            cell = stack.pop()
-            if cell in visited:
-                continue
-            visited.add(cell)
-            exploratory_path.append(cell)
-            if cell == end:
-                break
-            r, c = cell
-            for nr, nc in reversed(_neighbors4(r, c, h, w)):
-                if (nr, nc) in visited:
+        if use_bfs:
+            queue: deque[tuple[int, int]] = deque([start])
+            while queue:
+                cell = queue.popleft()
+                exploratory_path.append(cell)
+                if cell == end:
+                    break
+                r, c = cell
+                for nr, nc in _neighbors4(r, c, h, w):
+                    if (nr, nc) in parent:
+                        continue
+                    if not walkable(nr, nc):
+                        continue
+                    parent[nr, nc] = cell
+                    queue.append((nr, nc))
+        else:
+            # Iterative DFS with explicit frames so exploratory_path records every
+            # move (forward + backtrack along parent links), matching a continuous walk.
+            stack_frames: list[
+                tuple[tuple[int, int], int, list[tuple[int, int]]]
+            ] = []
+            neighbors_start = list(
+                reversed(_neighbors4(start[0], start[1], h, w))
+            )
+            stack_frames.append((start, 0, neighbors_start))
+            exploratory_path.append(start)
+
+            while stack_frames:
+                u, i, neighbors = stack_frames[-1]
+                if i >= len(neighbors):
+                    popped = stack_frames.pop()
+                    if not stack_frames:
+                        break
+                    child = popped[0]
+                    parent_u = stack_frames[-1][0]
+                    walk = parent[child]
+                    while walk is not None and walk != parent_u:
+                        exploratory_path.append(walk)
+                        walk = parent[walk]
+                    exploratory_path.append(parent_u)
                     continue
-                if not walkable(nr, nc):
+                v = neighbors[i]
+                stack_frames[-1] = (u, i + 1, neighbors)
+                if v in parent or not walkable(v[0], v[1]):
                     continue
-                if (nr, nc) in parent:
-                    continue
-                parent[nr, nc] = cell
-                stack.append((nr, nc))
+                parent[v] = u
+                exploratory_path.append(v)
+                if v == end:
+                    break
+                stack_frames.append(
+                    (
+                        v,
+                        0,
+                        list(reversed(_neighbors4(v[0], v[1], h, w))),
+                    )
+                )
 
         if end not in parent:
             return [], exploratory_path
@@ -253,17 +290,29 @@ class Maze:
         final_path.reverse()
         return final_path, exploratory_path
 
-    def draw_solution_path(self, exploratory_path: bool = False) -> None:
+    def draw_solution_path(
+        self,
+        exploratory_path: bool = False,
+        *,
+        use_bfs: bool = False,
+    ) -> None:
         """
-        Run DFS and mark path cells as ``P`` in :attr:`array`.
+        Run BFS or DFS (default) and mark path cells as ``P`` in :attr:`array`.
 
         By default only the found solution path is marked. With
-        ``exploratory_path=True``, every cell in DFS stack pop order is marked;
-        start and end stay as ``S`` / ``E``. Clears previous ``P`` markers first.
-        Updates :attr:`path` to the coordinates that were drawn.
+        ``exploratory_path=True``, every cell in search visit order is marked
+        (BFS dequeue order, or DFS as a continuous walk with backtracking). Start and end stay as
+        ``S`` / ``E``. Clears previous ``P`` markers first. Updates :attr:`path`
+        to the coordinates that were drawn and :attr:`path_image_tag` for
+        :meth:`maze_to_image` filenames (e.g. ``DFS_final``, ``BFS_exploratory``).
         """
-        final_path, dfs_order = self.find_final_and_exploratory_paths()
-        coords = dfs_order if exploratory_path else final_path
+        final_path, visit_order = self.find_final_and_exploratory_paths(use_bfs=use_bfs)
+        coords = visit_order if exploratory_path else final_path
+
+        self.path_image_tag = (
+            f"{'BFS' if use_bfs else 'DFS'}_"
+            f"{'exploratory' if exploratory_path else 'final'}"
+        )
 
         arr = self.array
         for r in range(self.height):
@@ -311,8 +360,7 @@ class Maze:
         path_c = path if path is not None else self.default_path
 
         os.makedirs(output_folder, exist_ok=True)
-        path_stamp = _path_stamp(self.path)
-        fname = f"maze_{self.width}_{self.height}_{self.seed}_{path_stamp}.png"
+        fname = f"maze_{self.width}_{self.height}_{self.seed}_{self.path_image_tag}.png"
         out_path = os.path.join(output_folder, fname)
 
         img_h = self.image_height
@@ -373,9 +421,9 @@ class Maze:
         m = _FILENAME_RE.match(base)
         if not m:
             raise ValueError(
-                f"Filename must match maze_<width>_<height>_<seed>_<hash>.png; got {base!r}"
+                f"Filename must match maze_<width>_<height>_<seed>_<tag>.png; got {base!r}"
             )
-        width, height, seed_s, _ = m.groups()
+        width, height, seed_s, tag = m.groups()
         w, h = int(width), int(height)
         seed = int(seed_s)
 
@@ -399,6 +447,7 @@ class Maze:
         obj.image_height = img_h
         obj.array = np.empty((h, w), dtype=object)
         obj.path = []
+        obj.path_image_tag = tag
 
         px = im.load()
         for r in range(h):
