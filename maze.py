@@ -74,15 +74,119 @@ def _grid_edges(n: int, total: int) -> list[int]:
             edges[i] = edges[i - 1]
     return edges
 
-
-def _cell_center_xy(
+def _cell_four_quadrant_centers_xy(
     r: int, c: int, x_edges: list[int], y_edges: list[int]
-) -> tuple[float, float]:
-    """Pixel center of the cell rectangle used by :meth:`Maze.maze_to_image`."""
-    x0, x1 = x_edges[c], x_edges[c + 1] - 1
-    y0, y1 = y_edges[r], y_edges[r + 1] - 1
-    return ((x0 + x1) / 2.0, (y0 + y1) / 2.0)
+) -> tuple[
+    tuple[float, float],
+    tuple[float, float],
+    tuple[float, float],
+    tuple[float, float],
+]:
+    """
+    Centers of the four sub-squares when the cell is split into a 2×2 grid (``y``
+    increases downward).
 
+    Returns ``(up_left, up_right, down_left, down_right)`` — center of the top-left,
+    top-right, bottom-left, and bottom-right quarter of the cell rectangle used by
+    :meth:`Maze.maze_to_image`.
+    """
+    x0 = float(x_edges[c])
+    x1 = float(x_edges[c + 1] - 1)
+    y0 = float(y_edges[r])
+    y1 = float(y_edges[r + 1] - 1)
+    mx = (x0 + x1) / 2.0
+    my = (y0 + y1) / 2.0
+    up_left = ((x0 + mx) / 2.0, (y0 + my) / 2.0)
+    up_right = ((mx + x1) / 2.0, (y0 + my) / 2.0)
+    down_left = ((x0 + mx) / 2.0, (my + y1) / 2.0)
+    down_right = ((mx + x1) / 2.0, (my + y1) / 2.0)
+    return up_left, up_right, down_left, down_right
+
+def _choose_point_quadrant(path: list[tuple[int, int]], index: int, up_left, up_right, down_left, down_right) -> int:
+    if index == 0:
+        first_cell = path[index]
+        second_cell = path[index + 1]
+        third_cell = None
+    elif index == len(path) - 1:
+        first_cell = path[index - 1]
+        second_cell = path[index]
+        third_cell = None
+    else:
+        first_cell = path[index-1]
+        second_cell = path[index]
+        third_cell = path[index + 1]
+
+    first_2_cells_direction = _get_2_cells_direction(first_cell, second_cell)
+
+    if third_cell is None:
+        if first_2_cells_direction == "up":
+            return [up_right], ["UR"]
+        elif first_2_cells_direction == "down":
+            return [down_left], ["DL"]
+        elif first_2_cells_direction == "left":
+            return [up_left], ["UL"]
+        elif first_2_cells_direction == "right":
+            return [down_right], ["DR"]
+
+
+
+    last_3_cells_maneuver = _get_last_3_cells_maneuver(first_cell, second_cell, third_cell)
+
+    if first_2_cells_direction == "up":
+        if last_3_cells_maneuver == "forward" or last_3_cells_maneuver == "left turn":
+            return [up_right], ["UR"]
+        elif last_3_cells_maneuver == "right turn":
+            return [down_right], ["DR"]
+        elif last_3_cells_maneuver == "u turn":
+            return [up_right, up_left], ["UR", "UL"]
+    elif first_2_cells_direction == "down":
+        if last_3_cells_maneuver == "forward" or last_3_cells_maneuver == "left turn":
+            return [down_left], ["DL"]
+        elif last_3_cells_maneuver == "right turn":
+            return [up_left], ["UL"]
+        elif last_3_cells_maneuver == "u turn":
+            return [down_left, down_right], ["DL", "DR"]
+    elif first_2_cells_direction == "left":
+        if last_3_cells_maneuver == "forward" or last_3_cells_maneuver == "left turn":
+            return [up_left], ["UL"]
+        elif last_3_cells_maneuver == "right turn":
+            return [up_right], ["UR"]
+        elif last_3_cells_maneuver == "u turn":
+            return [up_left, down_left], ["UL", "DL"]
+    elif first_2_cells_direction == "right":
+        if last_3_cells_maneuver == "forward" or last_3_cells_maneuver == "left turn":
+            return [down_right], ["DR"]
+        elif last_3_cells_maneuver == "right turn":
+            return [down_left], ["DL"]
+        elif last_3_cells_maneuver == "u turn":
+            return [down_right, up_right], ["DR", "UR"]
+
+def _get_last_3_cells_maneuver(a: tuple[int, int], b: tuple[int, int], c: tuple[int, int]) -> str:
+    """
+    a, b, c: (row, column) consecutive cells on a path (same order as
+    :func:`_get_2_cells_direction`). Returns how you turn at b when going a -> b -> c.
+    """
+    first_direction = _get_2_cells_direction(a, b)
+    second_direction = _get_2_cells_direction(b, c)
+    if first_direction == second_direction:
+        return "forward"
+    left_turn_directions = [("up", "left"), ("down", "right"), ("left", "down"), ("right", "up")]
+    right_turn_directions = [("up", "right"), ("down", "left"), ("left", "up"), ("right", "down")]
+    if (first_direction, second_direction) in left_turn_directions:
+        return "left turn"
+    elif (first_direction, second_direction) in right_turn_directions:
+        return "right turn"
+    else:
+        return "u turn"
+
+
+def _get_2_cells_direction(a: tuple[int, int], b: tuple[int, int]) -> str:
+    d_row, d_col = b[0] - a[0], b[1] - a[1]
+    if d_col == 1:  return "right"
+    if d_col == -1: return "left"
+    if d_row == 1:  return "down"   
+    if d_row == -1: return "up"
+    raise ValueError("not a single orthogonal step")
 
 def _nearest_label(rgb: tuple[int, int, int], palette: dict[str, tuple[int, int, int]]) -> str:
     best_k = ""
@@ -345,9 +449,10 @@ class Maze:
         pixels; each row uses ``image_height / height`` pixels on average. Width
         scales so cells stay square (same aspect as the maze grid).
 
-        Path cells (``P``) are filled with the free color; the solution polyline from
-        :attr:`path` is drawn in the path color with a dot at each cell center and
-        segments joining consecutive centers. Stroke width is
+        Path cells (``P``) are filled with the free color; the polyline from
+        :attr:`path` uses one of the four quarter-cell centers per step (chosen at random,
+        deterministically from ``seed`` and path index) and segments join consecutive
+        points. Dots mark those vertices. Stroke width is
         ``path_line_width_fraction`` times the pixel width of a column (default 1/4).
 
         Round-trip with ``image_to_maze`` is reliable when using the default palette
@@ -394,17 +499,17 @@ class Maze:
             col_w = x_edges[1] - x_edges[0] if self.width > 0 else 1
             line_w = max(1, int(round(path_line_width_fraction * col_w)))
             dot_r = max(1.0, line_w / 2.0)
-            centers = [
-                _cell_center_xy(r, c, x_edges, y_edges) for r, c in self.path
-            ]
-            for i in range(1, len(centers)):
-                draw.line([centers[i - 1], centers[i]], fill=path_c, width=line_w)
-            for cx, cy in centers:
-                x0 = int(cx - dot_r)
-                y0 = int(cy - dot_r)
-                x1 = int(cx + dot_r)
-                y1 = int(cy + dot_r)
-                draw.ellipse([x0, y0, x1, y1], fill=path_c, outline=path_c)
+            vertices: list[tuple[float, float]] = []
+            quadrant_names = []  
+            for i, (r, c) in enumerate(self.path):
+                up_left, up_right, down_left, down_right = _cell_four_quadrant_centers_xy(r, c, x_edges, y_edges)
+                chosen_quadrants, chosen_quadrant_names = _choose_point_quadrant(self.path, i, up_left, up_right, down_left, down_right)
+                quadrant_names.extend(chosen_quadrant_names)
+                vertices.extend(chosen_quadrants)
+                
+            for i in range(1, len(vertices)):
+                draw.line([vertices[i - 1], vertices[i]], fill=path_c, width=line_w)
+
 
         im.save(out_path, format="PNG")
         return out_path
