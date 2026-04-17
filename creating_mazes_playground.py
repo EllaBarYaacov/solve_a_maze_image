@@ -4,7 +4,7 @@ from maze import Maze
 
 
 seed = 42
-height = 201
+height = 7
 width = height
 maze = Maze(width=width, height=height, seed=seed)
 now = datetime.now().strftime("%Y%m%d_%H%M%S_%f")

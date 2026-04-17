@@ -73,6 +73,18 @@ def _grid_edges(n: int, total: int) -> list[int]:
             edges[i] = edges[i - 1]
     return edges
 
+
+def _cell_center_xy(
+    r: int, c: int, x_edges: list[int], y_edges: list[int]
+) -> tuple[float, float]:
+    """Pixel center of grid cell ``(row, column)`` for the final solution path."""
+    x0 = float(x_edges[c])
+    x1 = float(x_edges[c + 1] - 1)
+    y0 = float(y_edges[r])
+    y1 = float(y_edges[r + 1] - 1)
+    return ((x0 + x1) / 2.0, (y0 + y1) / 2.0)
+
+
 def _cell_four_quadrant_centers_xy(
     r: int, c: int, x_edges: list[int], y_edges: list[int]
 ) -> tuple[
@@ -427,11 +439,11 @@ class Maze:
         pixels; each row uses ``image_height / height`` pixels on average. Width
         scales so cells stay square (same aspect as the maze grid).
 
-        Path cells (``P``) are filled with the free color; the polyline from
-        :attr:`path` uses one of the four quarter-cell centers per step (chosen at random,
-        deterministically from ``seed`` and path index) and segments join consecutive
-        points. Dots mark those vertices. Stroke width is
-        ``path_line_width_fraction`` times the pixel width of a column (default 1/4).
+        Path cells (``P``) are filled with the free color. For tags containing
+        ``exploratory``, the polyline uses quarter-cell centers from
+        :func:`_choose_point_quadrant`, drawn segment by segment. For the final path,
+        a single polyline through **cell centers** uses ``joint="curve"``. Stroke width
+        is ``path_line_width_fraction`` times the pixel width of a column (default 1/4).
 
         Round-trip with ``image_to_maze`` is reliable when using the default palette
         (or when the same RGB tuples are used for decoding — defaults only for v1).
@@ -476,16 +488,24 @@ class Maze:
         if self.path:
             col_w = x_edges[1] - x_edges[0] if self.width > 0 else 1
             line_w = max(1, int(round(path_line_width_fraction * col_w)))
-            dot_r = max(1.0, line_w / 2.0)
-            vertices: list[tuple[float, float]] = []
-            quadrant_names = []  
-            for i, (r, c) in enumerate(self.path):
-                up_left, up_right, down_left, down_right = _cell_four_quadrant_centers_xy(r, c, x_edges, y_edges)
-                chosen_quadrants, chosen_quadrant_names = _choose_point_quadrant(self.path, i, up_left, up_right, down_left, down_right)
-                quadrant_names.extend(chosen_quadrant_names)
-                vertices.extend(chosen_quadrants)
+            if "exploratory" in self.path_image_tag:
+                dot_r = max(1.0, line_w / 2.0)
+                vertices: list[tuple[float, float]] = []
+                quadrant_names = []
+                for i, (r, c) in enumerate(self.path):
+                    up_left, up_right, down_left, down_right = _cell_four_quadrant_centers_xy(
+                        r, c, x_edges, y_edges
+                    )
+                    chosen_quadrants, chosen_quadrant_names = _choose_point_quadrant(
+                        self.path, i, up_left, up_right, down_left, down_right
+                    )
+                    quadrant_names.extend(chosen_quadrant_names)
+                    vertices.extend(chosen_quadrants)
+            elif len(self.path) >= 2:
+                vertices = [
+                    _cell_center_xy(r, c, x_edges, y_edges) for r, c in self.path
+                ]
             draw.line(vertices, fill=path_c, width=line_w, joint="curve")
-
 
         im.save(out_path, format="PNG")
         return out_path
