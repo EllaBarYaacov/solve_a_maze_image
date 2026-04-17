@@ -183,23 +183,25 @@ class Maze:
         exploratory: bool = False,
     ) -> list[str]:
         """
-        Find the DFS solution path from ``S`` to ``E`` and save a sequence of PNGs
-        under ``output_folder``. Frame ``k`` (filename ``..._stepk``) shows the
-        solution **through the first ``k`` cells** of that path; the last frame shows
-        the full route.
+        Save a sequence of PNGs under ``output_folder``. Frame ``k`` (suffix ``_step{k:04d}``)
+        shows the walk **through the first ``k`` positions**; the last frame shows the
+        full chosen sequence.
 
-        ``exploratory`` selects the same drawing style as :meth:`maze_to_image` (quarter
-        anchors vs cell centers). A one-cell prefix uses final-style rendering so the
-        stroke logic is well-defined.
+        If ``exploratory`` is false, the sequence is the **final** S→E solution path and
+        frames use the same drawing as ``DFS_final`` in :meth:`maze_to_image`. If true,
+        the sequence follows the **DFS exploratory** visit order (including backtracking)
+        and uses ``DFS_exploratory`` styling (quarter-cell anchors). A one-cell prefix
+        falls back to ``DFS_final`` rendering so stroke geometry stays valid.
         """
-        final_path, _ = self.find_final_and_exploratory_paths()
-        if not final_path:
+        final_path, exploratory_path = self.find_final_and_exploratory_paths()
+        seq = exploratory_path if exploratory else final_path
+        if not seq:
             return []
 
         arr = self.array
         out_paths: list[str] = []
-        for step in range(1, len(final_path) + 1):
-            prefix = final_path[:step]
+        for step in range(1, len(seq) + 1):
+            prefix = seq[:step]
             for r in range(self.height):
                 for c in range(self.width):
                     if arr[r, c] == "P":
