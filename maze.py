@@ -19,6 +19,7 @@ DEFAULT_FREE = (255, 255, 255)
 DEFAULT_START = (0, 255, 0)
 DEFAULT_END = (0, 0, 255)
 DEFAULT_PATH = (255, 0, 0)
+DEFAULT_IMAGE_PIXEL_SIZE = 800
 
 _FILENAME_RE = re.compile(r"^maze_(\d+)_(\d+)_(\d+)_(.+)\.png$")
 
@@ -30,14 +31,14 @@ class Maze:
     default_start: ClassVar[tuple[int, int, int]] = DEFAULT_START
     default_end: ClassVar[tuple[int, int, int]] = DEFAULT_END
     default_path: ClassVar[tuple[int, int, int]] = DEFAULT_PATH
-    default_image_height: ClassVar[int] = 800
+    default_image_pixel_size: ClassVar[int] = DEFAULT_IMAGE_PIXEL_SIZE
 
     def __init__(
         self, width: int, height: int, seed: int, image_height: int | None = None
     ) -> None:
         self.seed = seed
         self.image_height = (
-            int(image_height) if image_height is not None else self.default_image_height
+            int(image_height) if image_height is not None else self.default_image_pixel_size
         )
         maze_gen = MazeGenerator(width=width, height=height, seed=seed)
         maze_gen.generate_maze()
