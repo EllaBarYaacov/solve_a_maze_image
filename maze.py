@@ -484,9 +484,7 @@ class Maze:
                 chosen_quadrants, chosen_quadrant_names = _choose_point_quadrant(self.path, i, up_left, up_right, down_left, down_right)
                 quadrant_names.extend(chosen_quadrant_names)
                 vertices.extend(chosen_quadrants)
-                
-            for i in range(1, len(vertices)):
-                draw.line([vertices[i - 1], vertices[i]], fill=path_c, width=line_w)
+            draw.line(vertices, fill=path_c, width=line_w, joint="curve")
 
 
         im.save(out_path, format="PNG")
