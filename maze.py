@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import csv
+import json
 import os
 import random
 import re
@@ -181,7 +183,8 @@ class Maze:
         output_folder: str,
         *,
         exploratory: bool = False,
-    ) -> list[str]:
+        path_line_width_fraction: float = 0.25,
+    ) -> tuple[list[str], str]:
         """
         Save a sequence of PNGs under ``output_folder``. Frame ``k`` (suffix ``_step{k:04d}``)
         shows the walk **through the first ``k`` positions**; the last frame shows the
@@ -192,14 +195,21 @@ class Maze:
         the sequence follows the **DFS exploratory** visit order (including backtracking)
         and uses ``DFS_exploratory`` styling (quarter-cell anchors). A one-cell prefix
         falls back to ``DFS_final`` rendering so stroke geometry stays valid.
+
+        Also writes a CSV beside the PNGs with columns ``image_path``, ``solution_pixels``
+        (JSON list of ``[x, y]`` polyline vertices in image pixels, matching the red
+        stroke), and ``line_width`` (pixel stroke width). Returns ``(list of image paths,
+        path to the csv file)``.
         """
         final_path, exploratory_path = self.find_final_and_exploratory_paths()
         seq = exploratory_path if exploratory else final_path
         if not seq:
-            return []
+            return [], ""
 
         arr = self.array
         out_paths: list[str] = []
+        csv_rows: list[tuple[str, str, int]] = []
+
         for step in range(1, len(seq) + 1):
             prefix = seq[:step]
             for r in range(self.height):
@@ -217,11 +227,38 @@ class Maze:
             else:
                 self.path_image_tag = "DFS_final"
 
-            out_paths.append(
-                self.maze_to_image(output_folder, extra_info=f"_step{step:04d}")
+            out_path = self.maze_to_image(
+                output_folder,
+                extra_info=f"_step{step:04d}",
+                path_line_width_fraction=path_line_width_fraction,
             )
+            out_paths.append(out_path)
 
-        return out_paths
+            verts, lw = _solution_polyline_pixels_and_line_width(
+                prefix,
+                self.path_image_tag,
+                self.width,
+                self.height,
+                self.image_height,
+                path_line_width_fraction,
+            )
+            pix_json = json.dumps(
+                [[round(x, 3), round(y, 3)] for x, y in verts],
+                separators=(",", ":"),
+            )
+            csv_rows.append((os.path.abspath(out_path), pix_json, lw))
+
+        csv_fname = (
+            f"maze_{self.width}_{self.height}_{self.seed}_"
+            f"{'exploratory' if exploratory else 'final'}_solution_seq.csv"
+        )
+        csv_path = os.path.join(output_folder, csv_fname)
+        with open(csv_path, "w", newline="", encoding="utf-8") as cf:
+            writer = csv.writer(cf)
+            writer.writerow(["image_path", "solution_pixels", "line_width"])
+            writer.writerows(csv_rows)
+
+        return out_paths, csv_path
 
     def maze_to_image(
         self,
@@ -298,25 +335,14 @@ class Maze:
                 draw.rectangle([x0, y0, x1, y1], fill=color, outline=color)
 
         if self.path:
-            col_w = x_edges[1] - x_edges[0] if self.width > 0 else 1
-            line_w = max(1, int(round(path_line_width_fraction * col_w)))
-            vertices: list[tuple[float, float]] = []
-            if "exploratory" in self.path_image_tag:
-                dot_r = max(1.0, line_w / 2.0)
-                quadrant_names = []
-                for i, (r, c) in enumerate(self.path):
-                    up_left, up_right, down_left, down_right = _cell_four_quadrant_centers_xy(
-                        r, c, x_edges, y_edges
-                    )
-                    chosen_quadrants, chosen_quadrant_names = _choose_point_quadrant(
-                        self.path, i, up_left, up_right, down_left, down_right
-                    )
-                    quadrant_names.extend(chosen_quadrant_names)
-                    vertices.extend(chosen_quadrants)
-            elif len(self.path) >= 2:
-                vertices = [
-                    _cell_center_xy(r, c, x_edges, y_edges) for r, c in self.path
-                ]
+            vertices, line_w = _solution_polyline_pixels_and_line_width(
+                self.path,
+                self.path_image_tag,
+                self.width,
+                self.height,
+                self.image_height,
+                path_line_width_fraction,
+            )
             if len(vertices) >= 2:
                 draw.line(vertices, fill=path_c, width=line_w, joint="curve")
 
@@ -540,6 +566,43 @@ def _choose_point_quadrant(path: list[tuple[int, int]], index: int, up_left, up_
             return [down_left], ["DL"]
         elif last_3_cells_maneuver == "u turn":
             return [down_right, up_right], ["DR", "UR"]
+
+
+def _solution_polyline_pixels_and_line_width(
+    path: list[tuple[int, int]],
+    path_image_tag: str,
+    grid_width: int,
+    grid_height: int,
+    image_height: int,
+    path_line_width_fraction: float,
+) -> tuple[list[tuple[float, float]], int]:
+    """
+    Same path geometry as :meth:`Maze.maze_to_image` (vertices and stroke width in pixels).
+    """
+    img_h = image_height
+    img_w = int(round(img_h * grid_width / grid_height))
+    x_edges = _grid_edges(grid_width, img_w)
+    y_edges = _grid_edges(grid_height, img_h)
+    col_w = x_edges[1] - x_edges[0] if grid_width > 0 else 1
+    line_w = max(1, int(round(path_line_width_fraction * col_w)))
+    vertices: list[tuple[float, float]] = []
+    if not path:
+        return [], line_w
+    if "exploratory" in path_image_tag:
+        for i, (r, c) in enumerate(path):
+            up_left, up_right, down_left, down_right = _cell_four_quadrant_centers_xy(
+                r, c, x_edges, y_edges
+            )
+            chosen, _ = _choose_point_quadrant(
+                path, i, up_left, up_right, down_left, down_right
+            )
+            vertices.extend(chosen)
+    elif len(path) >= 2:
+        vertices = [
+            _cell_center_xy(r, c, x_edges, y_edges) for r, c in path
+        ]
+    return vertices, line_w
+
 
 def _get_last_3_cells_maneuver(a: tuple[int, int], b: tuple[int, int], c: tuple[int, int]) -> str:
     """
