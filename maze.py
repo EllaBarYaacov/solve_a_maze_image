@@ -176,6 +176,51 @@ class Maze:
 
         self.path = list(coords)
 
+    def create_solution_images_seq(
+        self,
+        output_folder: str,
+        *,
+        exploratory: bool = False,
+    ) -> list[str]:
+        """
+        Find the DFS solution path from ``S`` to ``E`` and save a sequence of PNGs
+        under ``output_folder``. Frame ``k`` (filename ``..._stepk``) shows the
+        solution **through the first ``k`` cells** of that path; the last frame shows
+        the full route.
+
+        ``exploratory`` selects the same drawing style as :meth:`maze_to_image` (quarter
+        anchors vs cell centers). A one-cell prefix uses final-style rendering so the
+        stroke logic is well-defined.
+        """
+        final_path, _ = self.find_final_and_exploratory_paths()
+        if not final_path:
+            return []
+
+        arr = self.array
+        out_paths: list[str] = []
+        for step in range(1, len(final_path) + 1):
+            prefix = final_path[:step]
+            for r in range(self.height):
+                for c in range(self.width):
+                    if arr[r, c] == "P":
+                        arr[r, c] = 0
+            for r, c in prefix:
+                v = arr[r, c]
+                if v not in ("S", "E") and v != 1:
+                    arr[r, c] = "P"
+
+            self.path = prefix
+            if exploratory and len(prefix) >= 2:
+                self.path_image_tag = "DFS_exploratory"
+            else:
+                self.path_image_tag = "DFS_final"
+
+            out_paths.append(
+                self.maze_to_image(output_folder, extra_info=f"_step{step:04d}")
+            )
+
+        return out_paths
+
     def maze_to_image(
         self,
         output_folder: str,

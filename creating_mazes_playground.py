@@ -4,20 +4,10 @@ from datetime import datetime
 from maze import Maze
 
 now = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
-ROOT = os.path.join(os.path.dirname(__file__), f"roundtrip_playground_{now}")
+ROOT = os.path.join(os.path.dirname(__file__), f"solution_seq_{now}")
 os.makedirs(ROOT, exist_ok=True)
 
-seed = 42
-size = 9
-maze = Maze(size, size, seed)
-maze.draw_solution_path(exploratory_path=False)
+maze = Maze(9, 9, 42)
+# Growing solution: _step0001.png … _stepNNNN.png (full path on last frame)
+saved = maze.create_solution_images_seq(ROOT, exploratory=False)
 
-paths: list[str] = []
-paths.append(maze.maze_to_image(output_folder=ROOT, extra_info="_i1"))
-for i in range(2, 6):
-    maze = Maze.image_to_maze(paths[-1])
-    paths.append(maze.maze_to_image(output_folder=ROOT, extra_info=f"_i{i}"))
-
-print(f"Wrote {len(paths)} images to {ROOT}:")
-for p in paths:
-    print(" ", os.path.basename(p))
