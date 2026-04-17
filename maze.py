@@ -211,6 +211,43 @@ def _nearest_label(rgb: tuple[int, int, int], palette: dict[str, tuple[int, int,
     return best_k
 
 
+def _decode_grid_cell_from_pixels(
+    px,
+    r: int,
+    c: int,
+    x_edges: list[int],
+    y_edges: list[int],
+    palette: dict[str, tuple[int, int, int]],
+) -> object:
+    """
+    Map one maze cell to ``1``, ``0``, ``"S"``, ``"E"``, or ``"P"`` using several
+    RGB samples (3×3 lattice in pixel space).
+
+    A single center sample fails when the red path stroke sits on top of start/end
+    (center reads as ``path``). Sampling corners can still see green/blue. Priority
+    ``start`` / ``end`` over ``path`` fixes that for the usual stroke width.
+    """
+    x0 = x_edges[c]
+    x1 = x_edges[c + 1] - 1
+    y0 = y_edges[r]
+    y1 = y_edges[r + 1] - 1
+    xs = sorted({x0, (x0 + x1) // 2, x1})
+    ys = sorted({y0, (y0 + y1) // 2, y1})
+    labels: list[str] = []
+    for py in ys:
+        for px_i in xs:
+            labels.append(_nearest_label(px[px_i, py], palette))
+    if "start" in labels:
+        return "S"
+    if "end" in labels:
+        return "E"
+    if "path" in labels:
+        return "P"
+    if labels.count("wall") > labels.count("free"):
+        return 1
+    return 0
+
+
 def _neighbors4(r: int, c: int, h: int, w: int) -> list[tuple[int, int]]:
     out = []
     if r > 0:
@@ -445,6 +482,11 @@ class Maze:
         a single polyline through **cell centers** uses ``joint="curve"``. Stroke width
         is ``path_line_width_fraction`` times the pixel width of a column (default 1/4).
 
+        The path stroke is drawn **on top** of the grid (including through start/end
+        cells), matching the original look: red connects visibly through green and blue.
+        :meth:`image_to_maze` uses multi-sample decoding so ``S``/``E`` are still read
+        correctly (corners of those cells keep the marker color beside the stroke).
+
         Round-trip with ``image_to_maze`` is reliable when using the default palette
         (or when the same RGB tuples are used for decoding — defaults only for v1).
         """
@@ -488,9 +530,9 @@ class Maze:
         if self.path:
             col_w = x_edges[1] - x_edges[0] if self.width > 0 else 1
             line_w = max(1, int(round(path_line_width_fraction * col_w)))
+            vertices: list[tuple[float, float]] = []
             if "exploratory" in self.path_image_tag:
                 dot_r = max(1.0, line_w / 2.0)
-                vertices: list[tuple[float, float]] = []
                 quadrant_names = []
                 for i, (r, c) in enumerate(self.path):
                     up_left, up_right, down_left, down_right = _cell_four_quadrant_centers_xy(
@@ -505,7 +547,8 @@ class Maze:
                 vertices = [
                     _cell_center_xy(r, c, x_edges, y_edges) for r, c in self.path
                 ]
-            draw.line(vertices, fill=path_c, width=line_w, joint="curve")
+            if len(vertices) >= 2:
+                draw.line(vertices, fill=path_c, width=line_w, joint="curve")
 
         im.save(out_path, format="PNG")
         return out_path
@@ -514,9 +557,11 @@ class Maze:
     def image_to_maze(cls, image_path: str) -> Maze:
         """
         Load a PNG written by :meth:`maze_to_image`. Parses ``width``, ``height``,
-        and ``seed`` from the filename. Decodes pixels using the default palette
-        (nearest RGB). ``self.path`` is filled by walking ``P`` cells from ``S`` to
-        ``E`` when possible; otherwise row-major ``P`` order.
+        and ``seed`` from the filename. Each cell is decoded with several RGB samples
+        per cell (see :func:`_decode_grid_cell_from_pixels`) so start/end/path stay
+        distinct even when the red stroke covers the cell center. ``self.path`` is
+        filled by walking ``P`` cells from ``S`` to ``E`` when possible; otherwise
+        row-major ``P`` order.
         """
         base = os.path.basename(image_path)
         m = _FILENAME_RE.match(base)
@@ -553,20 +598,9 @@ class Maze:
         px = im.load()
         for r in range(h):
             for c in range(w):
-                cx = (x_edges[c] + x_edges[c + 1] - 1) // 2
-                cy = (y_edges[r] + y_edges[r + 1] - 1) // 2
-                rgb = px[cx, cy]
-                label = _nearest_label(rgb, palette)
-                if label == "wall":
-                    obj.array[r, c] = 1
-                elif label == "free":
-                    obj.array[r, c] = 0
-                elif label == "start":
-                    obj.array[r, c] = "S"
-                elif label == "end":
-                    obj.array[r, c] = "E"
-                else:
-                    obj.array[r, c] = "P"
+                obj.array[r, c] = _decode_grid_cell_from_pixels(
+                    px, r, c, x_edges, y_edges, palette
+                )
 
         s_pos = e_pos = None
         for r in range(h):
