@@ -1,11 +1,23 @@
 import os
 from datetime import datetime
+
 from maze import Maze
 
+now = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
+ROOT = os.path.join(os.path.dirname(__file__), f"roundtrip_playground_{now}")
+os.makedirs(ROOT, exist_ok=True)
 
-now = datetime.now().strftime('%Y%m%d_%H%M%S_%f')
-ROOT = f"restored_maze_{now}"
-image_path = "20260417_134734_206505_mazes_9x9_42/maze_9_9_42_DFS_final.png"
-restored_maze = Maze.image_to_maze(image_path)
-print(f"restored_maze.array: \n{restored_maze.array}")
-out_path = restored_maze.maze_to_image(output_folder=ROOT)
+seed = 42
+size = 9
+maze = Maze(size, size, seed)
+maze.draw_solution_path(exploratory_path=False)
+
+paths: list[str] = []
+paths.append(maze.maze_to_image(output_folder=ROOT, extra_info="_i1"))
+for i in range(2, 6):
+    maze = Maze.image_to_maze(paths[-1])
+    paths.append(maze.maze_to_image(output_folder=ROOT, extra_info=f"_i{i}"))
+
+print(f"Wrote {len(paths)} images to {ROOT}:")
+for p in paths:
+    print(" ", os.path.basename(p))
