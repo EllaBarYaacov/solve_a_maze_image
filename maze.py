@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from collections import deque
 import os
 import random
 import re
@@ -293,18 +292,16 @@ class Maze:
         self.path_image_tag: str = "none"
 
     def find_final_and_exploratory_paths(
-        self, use_bfs: bool = False
+        self,
     ) -> tuple[list[tuple[int, int]], list[tuple[int, int]]]:
         """
-        Search from S to E with breadth-first (``use_bfs=True``) or depth-first
-        (default).
+        Depth-first search from S to E.
 
-        Returns ``(final_path, exploratory_path)``. With BFS, ``final_path`` is a
-        shortest route; ``exploratory_path`` is dequeue order. With DFS,
-        ``final_path`` is *a* route (neighbor order from :func:`_neighbors4`,
-        reversed for stack order). ``exploratory_path`` is a **continuous** walk:
-        each step is to an orthogonal neighbor, including backtracking along the
-        DFS tree after a failed subtree.
+        Returns ``(final_path, exploratory_path)``. ``final_path`` is *a* route
+        (neighbor order from :func:`_neighbors4`, reversed for stack order).
+        ``exploratory_path`` is a **continuous** walk: each step is to an
+        orthogonal neighbor, including backtracking along the DFS tree after a
+        failed subtree.
         """
         h, w = self.height, self.width
         arr = self.array
@@ -326,62 +323,46 @@ class Maze:
         parent: dict[tuple[int, int], tuple[int, int] | None] = {start: None}
         exploratory_path: list[tuple[int, int]] = []
 
-        if use_bfs:
-            queue: deque[tuple[int, int]] = deque([start])
-            while queue:
-                cell = queue.popleft()
-                exploratory_path.append(cell)
-                if cell == end:
-                    break
-                r, c = cell
-                for nr, nc in _neighbors4(r, c, h, w):
-                    if (nr, nc) in parent:
-                        continue
-                    if not walkable(nr, nc):
-                        continue
-                    parent[nr, nc] = cell
-                    queue.append((nr, nc))
-        else:
-            # Iterative DFS with explicit frames so exploratory_path records every
-            # move (forward + backtrack along parent links), matching a continuous walk.
-            stack_frames: list[
-                tuple[tuple[int, int], int, list[tuple[int, int]]]
-            ] = []
-            neighbors_start = list(
-                reversed(_neighbors4(start[0], start[1], h, w))
-            )
-            stack_frames.append((start, 0, neighbors_start))
-            exploratory_path.append(start)
+        # Iterative DFS with explicit frames so exploratory_path records every
+        # move (forward + backtrack along parent links), matching a continuous walk.
+        stack_frames: list[
+            tuple[tuple[int, int], int, list[tuple[int, int]]]
+        ] = []
+        neighbors_start = list(
+            reversed(_neighbors4(start[0], start[1], h, w))
+        )
+        stack_frames.append((start, 0, neighbors_start))
+        exploratory_path.append(start)
 
-            while stack_frames:
-                u, i, neighbors = stack_frames[-1]
-                if i >= len(neighbors):
-                    popped = stack_frames.pop()
-                    if not stack_frames:
-                        break
-                    child = popped[0]
-                    parent_u = stack_frames[-1][0]
-                    walk = parent[child]
-                    while walk is not None and walk != parent_u:
-                        exploratory_path.append(walk)
-                        walk = parent[walk]
-                    exploratory_path.append(parent_u)
-                    continue
-                v = neighbors[i]
-                stack_frames[-1] = (u, i + 1, neighbors)
-                if v in parent or not walkable(v[0], v[1]):
-                    continue
-                parent[v] = u
-                exploratory_path.append(v)
-                if v == end:
+        while stack_frames:
+            u, i, neighbors = stack_frames[-1]
+            if i >= len(neighbors):
+                popped = stack_frames.pop()
+                if not stack_frames:
                     break
-                stack_frames.append(
-                    (
-                        v,
-                        0,
-                        list(reversed(_neighbors4(v[0], v[1], h, w))),
-                    )
+                child = popped[0]
+                parent_u = stack_frames[-1][0]
+                walk = parent[child]
+                while walk is not None and walk != parent_u:
+                    exploratory_path.append(walk)
+                    walk = parent[walk]
+                exploratory_path.append(parent_u)
+                continue
+            v = neighbors[i]
+            stack_frames[-1] = (u, i + 1, neighbors)
+            if v in parent or not walkable(v[0], v[1]):
+                continue
+            parent[v] = u
+            exploratory_path.append(v)
+            if v == end:
+                break
+            stack_frames.append(
+                (
+                    v,
+                    0,
+                    list(reversed(_neighbors4(v[0], v[1], h, w))),
                 )
+            )
 
         if end not in parent:
             return [], exploratory_path
@@ -397,25 +378,22 @@ class Maze:
     def draw_solution_path(
         self,
         exploratory_path: bool = False,
-        *,
-        use_bfs: bool = False,
     ) -> None:
         """
-        Run BFS or DFS (default) and mark path cells as ``P`` in :attr:`array`.
+        Run DFS and mark path cells as ``P`` in :attr:`array`.
 
         By default only the found solution path is marked. With
         ``exploratory_path=True``, every cell in search visit order is marked
-        (BFS dequeue order, or DFS as a continuous walk with backtracking). Start and end stay as
+        (DFS as a continuous walk with backtracking). Start and end stay as
         ``S`` / ``E``. Clears previous ``P`` markers first. Updates :attr:`path`
         to the coordinates that were drawn and :attr:`path_image_tag` for
-        :meth:`maze_to_image` filenames (e.g. ``DFS_final``, ``BFS_exploratory``).
+        :meth:`maze_to_image` filenames (e.g. ``DFS_final``, ``DFS_exploratory``).
         """
-        final_path, visit_order = self.find_final_and_exploratory_paths(use_bfs=use_bfs)
+        final_path, visit_order = self.find_final_and_exploratory_paths()
         coords = visit_order if exploratory_path else final_path
 
         self.path_image_tag = (
-            f"{'BFS' if use_bfs else 'DFS'}_"
-            f"{'exploratory' if exploratory_path else 'final'}"
+            f"DFS_{'exploratory' if exploratory_path else 'final'}"
         )
 
         arr = self.array
