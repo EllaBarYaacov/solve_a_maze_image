@@ -2,7 +2,8 @@
 Generate mazes from ``maze_generation_config.json``: size buckets with target fractions,
 ``master_seed`` for reproducibility, and per-maze derived seeds so layouts differ even
 when side length repeats. Side lengths are always sampled as **odd** integers in each
-bucket range (for ``maze_generator_jotbleach``).
+bucket range (for ``maze_generator_jotbleach``). Optional ``image_pixel_size`` sets
+rasterized PNG height in pixels (defaults to the maze module default when omitted).
 
 Each run writes under ``maze_data/`` into ``maze_data_<YYYYMMDD_HHMMSS_microseconds>/``
 (next to ``maze_data_generation/`` by default), and stores a copy of the config file
@@ -27,7 +28,7 @@ _REPO_ROOT = os.path.dirname(_HERE)
 if _REPO_ROOT not in sys.path:
     sys.path.insert(0, _REPO_ROOT)
 
-from maze import Maze
+from maze import DEFAULT_IMAGE_PIXEL_SIZE, Maze
 
 DEFAULT_CONFIG_PATH = os.path.join(_HERE, "maze_generation_config.json")
 
@@ -88,6 +89,10 @@ def _validate_config(cfg: dict[str, Any]) -> None:
     s = sum(fracs)
     if abs(s - 1.0) > 1e-5:
         raise ValueError(f"size_buckets fractions must sum to 1.0, got {s}")
+    if "image_pixel_size" in cfg:
+        ip = int(cfg["image_pixel_size"])
+        if ip < 1:
+            raise ValueError("image_pixel_size must be >= 1")
 
 
 def generate_maze_data(
@@ -108,6 +113,7 @@ def generate_maze_data(
 
     master = int(cfg["master_seed"])
     total = int(cfg["total_mazes"])
+    image_pixel_size = int(cfg.get("image_pixel_size", DEFAULT_IMAGE_PIXEL_SIZE))
     buckets = cfg["size_buckets"]
     fractions = [float(b["fraction"]) for b in buckets]
     counts = _allocate_bucket_counts(total, fractions)
@@ -128,7 +134,7 @@ def generate_maze_data(
         for _ in range(counts[bi]):
             side = _random_odd_side_in_range(rng, lo, hi)
             maze_seed = derived_maze_seed(master, global_idx)
-            maze = Maze(side, side, maze_seed)
+            maze = Maze(side, side, maze_seed, image_pixel_size=image_pixel_size)
             sub = os.path.join(
                 batch_root,
                 f"maze_{global_idx:03d}_size_{side}x{side}_seed_{maze_seed}",

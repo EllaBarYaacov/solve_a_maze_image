@@ -34,11 +34,13 @@ class Maze:
     default_image_pixel_size: ClassVar[int] = DEFAULT_IMAGE_PIXEL_SIZE
 
     def __init__(
-        self, width: int, height: int, seed: int, image_height: int | None = None
+        self, width: int, height: int, seed: int, image_pixel_size: int | None = None
     ) -> None:
         self.seed = seed
-        self.image_height = (
-            int(image_height) if image_height is not None else self.default_image_pixel_size
+        self.image_pixel_size = (
+            int(image_pixel_size)
+            if image_pixel_size is not None
+            else self.default_image_pixel_size
         )
         maze_gen = MazeGenerator(width=width, height=height, seed=seed)
         maze_gen.generate_maze()
@@ -240,7 +242,7 @@ class Maze:
                 self.path_image_tag,
                 self.width,
                 self.height,
-                self.image_height,
+                self.image_pixel_size,
                 path_line_width_fraction,
             )
             pix_json = json.dumps(
@@ -274,8 +276,8 @@ class Maze:
         extra_info: str = "",
     ) -> str:
         """
-        Rasterize ``self.array`` to a PNG. Output height is ``self.image_height``
-        pixels; each row uses ``image_height / height`` pixels on average. Width
+        Rasterize ``self.array`` to a PNG. Output height is ``self.image_pixel_size``
+        pixels; each row uses ``self.image_pixel_size / self.height`` pixels on average. Width
         scales so cells stay square (same aspect as the maze grid).
 
         Path cells (``P``) are filled with the free color. For tags containing
@@ -308,7 +310,7 @@ class Maze:
         )
         out_path = os.path.join(output_folder, fname)
 
-        img_h = self.image_height
+        img_h = self.image_pixel_size
         img_w = int(round(img_h * self.width / self.height))
         x_edges = _grid_edges(self.width, img_w)
         y_edges = _grid_edges(self.height, img_h)
@@ -341,7 +343,7 @@ class Maze:
                 self.path_image_tag,
                 self.width,
                 self.height,
-                self.image_height,
+                self.image_pixel_size,
                 path_line_width_fraction,
             )
             if len(vertices) >= 2:
@@ -389,7 +391,7 @@ class Maze:
         obj.width = w
         obj.height = h
         obj.seed = seed
-        obj.image_height = img_h
+        obj.image_pixel_size = img_h
         obj.array = np.empty((h, w), dtype=object)
         obj.path = []
         obj.path_image_tag = tag
@@ -596,13 +598,13 @@ def _solution_polyline_pixels_and_line_width(
     path_image_tag: str,
     grid_width: int,
     grid_height: int,
-    image_height: int,
+    image_pixel_size: int,
     path_line_width_fraction: float,
 ) -> tuple[list[tuple[float, float]], int]:
     """
     Same path geometry as :meth:`Maze.maze_to_image` (vertices and stroke width in pixels).
     """
-    img_h = image_height
+    img_h = image_pixel_size
     img_w = int(round(img_h * grid_width / grid_height))
     x_edges = _grid_edges(grid_width, img_w)
     y_edges = _grid_edges(grid_height, img_h)
