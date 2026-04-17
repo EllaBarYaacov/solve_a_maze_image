@@ -1,0 +1,6 @@
+image_path,solution_pixels,line_width
+/home/nvidia/users/ella/solve_a_maze_image/solve_a_maze_image/maze_data/maze_data_20260417_203226_874612/maze_041_size_27x27_seed_1251002172/maze_27_27_1251002172_DFS_final_step0001.png,[],8
+/home/nvidia/users/ella/solve_a_maze_image/solve_a_maze_image/maze_data/maze_data_20260417_203226_874612/maze_041_size_27x27_seed_1251002172/maze_27_27_1251002172_DFS_final_step0002.png,"[[103.5,14.5],[103.5,44.0]]",8
+/home/nvidia/users/ella/solve_a_maze_image/solve_a_maze_image/maze_data/maze_data_20260417_203226_874612/maze_041_size_27x27_seed_1251002172/maze_27_27_1251002172_DFS_final_step0003.png,"[[103.5,14.5],[103.5,44.0],[133.0,44.0]]",8
+/home/nvidia/users/ella/solve_a_maze_image/solve_a_maze_image/maze_data/maze_data_20260417_203226_874612/maze_041_size_27x27_seed_1251002172/maze_27_27_1251002172_DFS_final_step0004.png,"[[103.5,14.5],[103.5,44.0],[133.0,44.0],[162.5,44.0]]",8
+/home/nvidia/users/ella/solve_a_maze_image/solve_a_maze_image/maze_data/maze_data_20260417_203226_874612/maze_041_size_27x27_seed_1251002172/maze_27_27_1251002172_DFS_final_step0005.png,"[[103.5,14.5],[103.5,44.0],[133.0,44.0],[162.5,44.0],[162.5,14.5]]",8

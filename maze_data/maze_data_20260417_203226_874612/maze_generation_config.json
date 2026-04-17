@@ -1,0 +1,21 @@
+{
+  "master_seed": 42,
+  "total_mazes": 60,
+  "size_buckets": [
+    {
+      "min_side": 7,
+      "max_side": 9,
+      "fraction": 0.333333
+    },
+    {
+      "min_side": 15,
+      "max_side": 25,
+      "fraction": 0.333333
+    },
+    {
+      "min_side": 27,
+      "max_side": 35,
+      "fraction": 0.333333
+    }
+  ]
+}
