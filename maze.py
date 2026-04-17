@@ -421,8 +421,11 @@ def random_frame_openings(
 ) -> tuple[tuple[int, int], tuple[int, int]]:
     """
     Pick two distinct random cells on the outer frame that are wall cells and
-    orthogonally adjacent to at least one path cell (so opening them connects
+    orthogonally adjacent to at least one path cell (each opening connects
     to the maze). Default start/end from generate_maze are sealed first.
+
+    Start and end are placed on **opposite** edges: either top vs bottom or
+    left vs right (chosen at random when both are possible).
     """
     h, w = maze_gen.height, maze_gen.width
     maze = maze_gen.maze
@@ -449,7 +452,26 @@ def random_frame_openings(
             "Not enough valid border openings; use a larger odd width/height."
         )
 
-    a, b = rng.sample(candidates, 2)
+    on_top = [p for p in candidates if p[0] == 0]
+    on_bottom = [p for p in candidates if p[0] == h - 1]
+    on_left = [p for p in candidates if p[1] == 0]
+    on_right = [p for p in candidates if p[1] == w - 1]
+
+    orientations: list[tuple[list[tuple[int, int]], list[tuple[int, int]]]] = []
+    if h > 1 and on_top and on_bottom:
+        orientations.append((on_top, on_bottom))
+    if w > 1 and on_left and on_right:
+        orientations.append((on_left, on_right))
+
+    if orientations:
+        pool_a, pool_b = rng.choice(orientations)
+        a = rng.choice(pool_a)
+        b = rng.choice(pool_b)
+        if a == b:
+            a, b = rng.sample(candidates, 2)
+    else:
+        a, b = rng.sample(candidates, 2)
+
     maze[a[0]][a[1]] = 0
     maze[b[0]][b[1]] = 0
     maze_gen.start_pos, maze_gen.end_pos = a, b
