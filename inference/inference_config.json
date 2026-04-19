@@ -1,0 +1,9 @@
+{
+  "backend": "grounding_dino",
+  "model_name": "IDEA-Research/grounding-dino-base",
+  "image_path": "maze_data/maze_data_20260417_212507_736990/maze_020_size_25x25_seed_723709422/maze_25_25_723709422_DFS_final_step0010.png",
+  "prompt": "blue square. black maze walls. green square. red line",
+  "bf16": null,
+  "grounding_threshold": 0.4,
+  "text_threshold": 0.3
+}
