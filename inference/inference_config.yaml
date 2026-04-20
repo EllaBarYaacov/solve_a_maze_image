@@ -1,0 +1,17 @@
+# -----------------------------------------------------------------------------
+backend: grounding_dino  # qwen_vl/grounding_dino
+model_name: IDEA-Research/grounding-dino-base
+# -----------------------------------------------------------------------------#
+#   If backend is qwen_vl:
+#     Examples: Qwen/Qwen3-VL-4B-Instruct
+#     Pick any compatible Qwen3-VL Instruct (or similar) checkpoint you can access.
+#
+#   If backend is grounding_dino:
+#     IDEA-Research/grounding-dino-base  — stronger zero-shot quality (more VRAM)
+#     IDEA-Research/grounding-dino-tiny — lighter Swin-T variant (less VRAM)
+# -----------------------------------------------------------------------------
+image_path: maze_data/maze_data_20260417_212507_736990/maze_020_size_25x25_seed_723709422/maze_25_25_723709422_DFS_final_step0010.png
+prompt: "blue square. black maze walls. green square. red line"
+bf16: null
+grounding_threshold: 0.4
+text_threshold: 0.3

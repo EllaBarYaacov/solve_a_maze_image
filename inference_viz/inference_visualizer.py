@@ -1,7 +1,7 @@
 """
 ``InferenceVisualizer`` and format handlers for drawing model outputs on images.
 
-``plotting_config.json`` in the ``inference_viz`` package directory sets defaults.
+``visualizer_config.yaml`` in the ``inference_viz`` package directory sets defaults.
 Register new output layouts in ``OUTPUT_FORMAT_PLOTTERS``.
 """
 
@@ -10,6 +10,8 @@ from __future__ import annotations
 import colorsys
 import json
 import re
+
+import yaml
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Callable
@@ -27,13 +29,16 @@ def inference_viz_filename(image_stem: str) -> str:
 
 
 def default_plotting_config_path() -> Path:
-    """Path to ``plotting_config.json`` in the ``inference_viz`` package directory."""
-    return Path(__file__).resolve().parent / "plotting_config.json"
+    """Path to ``visualizer_config.yaml`` in the ``inference_viz`` package directory."""
+    return Path(__file__).resolve().parent / "visualizer_config.yaml"
 
 
 def load_plotting_config(path: Path) -> dict[str, Any]:
     with open(path, encoding="utf-8") as f:
-        return json.load(f)
+        data = yaml.safe_load(f)
+    if not isinstance(data, dict):
+        raise ValueError(f"Plotting config must be a YAML mapping: {path}")
+    return data
 
 
 def _hex_rgb(s: str) -> tuple[int, int, int]:
@@ -112,7 +117,7 @@ def plot_grounding_dino(image: Image.Image, model_output: str, cfg: dict[str, An
     Expects JSON like ``{"detections": [{"label": str, "score": float, "box": [x1,y1,x2,y2]}]}``.
     Boxes are xyxy in pixel coordinates. Each box gets a distinct color; class names are in
     the right-hand legend. If ``cfg`` contains ``inference_prompt`` (set by
-    ``InferenceVisualizer.render(..., inference_prompt=...)`` from ``inference_config.json``),
+    ``InferenceVisualizer.render(..., inference_prompt=...)`` from ``inference_config.yaml``),
     that text is drawn below the legend, word-wrapped in the legend column.
     """
     data = json.loads(model_output.strip())
@@ -246,7 +251,7 @@ OUTPUT_FORMAT_PLOTTERS: dict[str, OutputFormatPlotFn] = {
 
 
 class InferenceVisualizer:
-    """Load ``plotting_config.json`` and render model output onto images."""
+    """Load plotting config (YAML) and render model output onto images."""
 
     def __init__(self, plotting_config: dict[str, Any]) -> None:
         self.cfg = plotting_config

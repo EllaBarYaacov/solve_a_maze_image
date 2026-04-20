@@ -1,5 +1,5 @@
 """
-Run VLM generation from ``inference_config.json`` (backend + model + image + prompt).
+Run VLM generation from ``inference_config.yaml`` (backend + model + image + prompt).
 
 Edit the config file; do not pass model settings on the command line.
 Generative backends (e.g. ``qwen_vl``) use ``load_for_inference`` + chat generate.
@@ -9,11 +9,11 @@ instead and return structured text (e.g. JSON).
 
 from __future__ import annotations
 
-import json
 import sys
 from pathlib import Path
 
 import torch
+import yaml
 from PIL import Image
 
 _REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -32,7 +32,9 @@ from vlm_models import load_backend_module
 
 def load_config(config_path: Path) -> dict:
     with open(config_path, encoding="utf-8") as f:
-        cfg = json.load(f)
+        cfg = yaml.safe_load(f)
+    if not isinstance(cfg, dict):
+        raise ValueError(f"Config must be a YAML mapping: {config_path}")
     required = ("backend", "image_path", "prompt", "model_name")
     for k in required:
         if k not in cfg:
@@ -63,7 +65,7 @@ def _inference_viz_save_path(
     ``output_folder`` argument > ``plot_output_folder`` in inference config >
     ``output_folder`` in plotting config. If that key is missing, use
     ``{_DEFAULT_VIZ_DIR!r}`` under the repo root. If plotting config sets
-    ``output_folder`` to JSON null, save next to the source image.
+    ``output_folder`` to YAML null, save next to the source image.
     """
     raw_save = pcfg.get("save_path")
     if isinstance(raw_save, str) and raw_save.strip():
@@ -173,11 +175,11 @@ def save_inference_plot(
     plotting_config_path: Path | None = None,
 ) -> Path | None:
     """
-    If ``inference_viz/plotting_config.json`` exists and ``enabled`` is true, draw and save a viz.
+    If ``inference_viz/visualizer_config.yaml`` exists and ``enabled`` is true, draw and save a viz.
 
     ``output_folder`` overrides the destination directory (see
     ``_inference_viz_save_path``). By default, PNGs go under ``temp output/`` at
-    the repo root unless that config sets ``output_folder`` (use JSON ``null`` to
+    the repo root unless that config sets ``output_folder`` (use YAML ``null`` to
     save next to the source image) or ``save_path`` to a file path.
     """
     pcp = plotting_config_path or default_plotting_config_path()
@@ -185,7 +187,7 @@ def save_inference_plot(
         return None
     try:
         pcfg = load_plotting_config(pcp)
-    except (OSError, json.JSONDecodeError) as e:
+    except (OSError, yaml.YAMLError) as e:
         print(f"Warning: could not load plotting config {pcp}: {e}", file=sys.stderr)
         return None
     if not pcfg.get("enabled", False):
@@ -213,7 +215,7 @@ def save_inference_plot(
 
 
 if __name__ == "__main__":
-    CONFIG_PATH = Path(__file__).resolve().parent / "inference_config.json"
+    CONFIG_PATH = Path(__file__).resolve().parent / "inference_config.yaml"
     config = load_config(CONFIG_PATH)
     print(f"Config: {CONFIG_PATH}")
     print(f"  backend: {config['backend']}")
@@ -223,5 +225,5 @@ if __name__ == "__main__":
     out = run_inference(config)
     print("--- model output ---")
     print(out)
-    plot_dir = "plot_output_folder"
+    plot_dir = config.get("plot_output_folder")
     save_inference_plot(config, image_resolved, out, plot_dir)

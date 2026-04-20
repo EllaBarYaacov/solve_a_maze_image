@@ -1,5 +1,6 @@
 maze_generator_jotbleach
 Pillow
+PyYAML>=6.0
 numpy
 torch
 torchvision
