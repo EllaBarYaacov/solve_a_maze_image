@@ -1,7 +1,7 @@
 {
   "master_seed": 421,
-  "total_mazes": 60,
-  "image_pixel_size": 256,
+  "total_mazes": 30,
+  "image_pixel_size": 600,
   "size_buckets": [
     {
       "min_side": 7,

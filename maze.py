@@ -21,7 +21,9 @@ DEFAULT_END = (0, 0, 255)
 DEFAULT_PATH = (255, 0, 0)
 DEFAULT_IMAGE_PIXEL_SIZE = 800
 
-_FILENAME_RE = re.compile(r"^maze_(\d+)_(\d+)_(\d+)_(.+)\.png$")
+_FILENAME_RE = re.compile(
+    r"^maze_(\d+)_(\d+)_seed_(\d+)_(\d+)x(\d+)_(.+)\.png$"
+)
 
 class Maze:
     """2D maze with wall/path/start/end/path markers and PNG round-trip."""
@@ -62,6 +64,12 @@ class Maze:
         self.array[end[0], end[1]] = "E"
         self.path: list[tuple[int, int]] = []
         self.path_image_tag: str = "none"
+
+    def _output_png_size(self) -> tuple[int, int]:
+        """``(width, height)`` of rasterized PNG in pixels."""
+        img_h = self.image_pixel_size
+        img_w = int(round(img_h * self.width / self.height))
+        return img_w, img_h
 
     def find_final_and_exploratory_paths(
         self,
@@ -251,9 +259,10 @@ class Maze:
             )
             csv_rows.append((os.path.abspath(out_path), pix_json, lw))
 
+        rw, rh = self._output_png_size()
         csv_fname = (
-            f"maze_{self.width}_{self.height}_{self.seed}_"
-            f"{'exploratory' if exploratory else 'final'}_solution_seq.csv"
+            f"maze_{self.width}_{self.height}_seed_{self.seed}_"
+            f"{rw}x{rh}_{'exploratory' if exploratory else 'final'}_solution_seq.csv"
         )
         csv_path = os.path.join(output_folder, csv_fname)
         with open(csv_path, "w", newline="", encoding="utf-8") as cf:
@@ -291,8 +300,8 @@ class Maze:
         :meth:`image_to_maze` uses multi-sample decoding so ``S``/``E`` are still read
         correctly (corners of those cells keep the marker color beside the stroke).
 
-        ``extra_info`` is appended to the filename before ``.png`` (e.g. ``_i2``), default
-        empty so existing names stay ``maze_<w>_<h>_<seed>_<tag>.png``.
+        ``extra_info`` is appended to the filename before ``.png`` (e.g. ``_step0001``), default
+        empty so names are ``maze_<w>_<h>_seed_<seed>_<img_w>x<img_h>_<tag>.png``.
 
         Round-trip with ``image_to_maze`` is reliable when using the default palette
         (or when the same RGB tuples are used for decoding — defaults only for v1).
@@ -304,14 +313,12 @@ class Maze:
         path_c = path if path is not None else self.default_path
 
         os.makedirs(output_folder, exist_ok=True)
+        img_w, img_h = self._output_png_size()
         fname = (
-            f"maze_{self.width}_{self.height}_{self.seed}_"
-            f"{self.path_image_tag}{extra_info}.png"
+            f"maze_{self.width}_{self.height}_seed_{self.seed}_"
+            f"{img_w}x{img_h}_{self.path_image_tag}{extra_info}.png"
         )
         out_path = os.path.join(output_folder, fname)
-
-        img_h = self.image_pixel_size
-        img_w = int(round(img_h * self.width / self.height))
         x_edges = _grid_edges(self.width, img_w)
         y_edges = _grid_edges(self.height, img_h)
         im = Image.new("RGB", (img_w, img_h), free)
@@ -357,8 +364,9 @@ class Maze:
         """
         This method is used to restore a maze from an image.
         IT WORKS ONLY FOR FINAL PATHS (not exploratory paths).
-        Load a PNG written by :meth:`maze_to_image`. Parses ``width``, ``height``,
-        and ``seed`` from the filename. Each cell is decoded with several RGB samples
+        Load a PNG written by :meth:`maze_to_image`. Parses grid ``width``, ``height``,
+        ``seed``, and path ``tag`` from the filename (raster ``<img_w>x<img_h>`` in the
+        name is informational; pixel geometry comes from the image file). Each cell is decoded with several RGB samples
         per cell (see :func:`_decode_grid_cell_from_pixels`) so start/end/path stay
         distinct even when the red stroke covers the cell center. ``self.path`` is
         filled by walking ``P`` cells from ``S`` to ``E`` when possible; otherwise
@@ -368,9 +376,10 @@ class Maze:
         m = _FILENAME_RE.match(base)
         if not m:
             raise ValueError(
-                f"Filename must match maze_<width>_<height>_<seed>_<tag>.png; got {base!r}"
+                f"Filename must match "
+                f"maze_<width>_<height>_seed_<seed>_<img_w>x<img_h>_<tag>.png; got {base!r}"
             )
-        width, height, seed_s, tag = m.groups()
+        width, height, seed_s, _fn_img_w, _fn_img_h, tag = m.groups()
         w, h = int(width), int(height)
         seed = int(seed_s)
 
