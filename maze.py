@@ -261,7 +261,7 @@ class Maze:
 
         rw, rh = self._output_png_size()
         csv_fname = (
-            f"maze_{self.width}_{self.height}_seed_{self.seed}_"
+            f"maze_{self.width}x{self.height}_seed_{self.seed}_"
             f"{rw}x{rh}_{'exploratory' if exploratory else 'final'}_solution_seq.csv"
         )
         csv_path = os.path.join(output_folder, csv_fname)
@@ -315,7 +315,7 @@ class Maze:
         os.makedirs(output_folder, exist_ok=True)
         img_w, img_h = self._output_png_size()
         fname = (
-            f"maze_{self.width}_{self.height}_seed_{self.seed}_"
+            f"maze_{self.width}x{self.height}_seed_{self.seed}_"
             f"{img_w}x{img_h}_{self.path_image_tag}{extra_info}.png"
         )
         out_path = os.path.join(output_folder, fname)
